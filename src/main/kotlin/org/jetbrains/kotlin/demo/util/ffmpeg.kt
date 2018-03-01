@@ -20,8 +20,6 @@ object ffmpeg {
                 "-t", track.duration,
                 "$dir/$name.mp3")
         val process = builder.start()
-        println(process.errorStream.reader().readText())
-        println(process.inputStream.reader().readText())
         val excode = process.waitFor()
         if (excode != 0) {
             //TODO

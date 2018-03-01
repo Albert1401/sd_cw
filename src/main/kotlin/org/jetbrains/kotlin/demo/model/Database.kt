@@ -15,19 +15,12 @@ fun initDatabase(file: String) {
     initDatabaseByFullUrl("jdbc:h2:file:$file")
 }
 
-fun initInMemoryDatabase() {
-    initDatabaseByFullUrl("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1")
-}
-
-fun dropDatabase() = transaction { drop(*TABLES) }
-
 private fun initDatabaseByFullUrl(url: String) {
     Database.connect(url = url, driver = "org.h2.Driver")
     TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
     transaction { create(*TABLES) }
 }
 
-//videos: videoId, url, progress, format, quality, timestamp
 object Medias : Table(){
     val id = integer("id").autoIncrement().primaryKey()
     val youtubeHash = varchar("youtubeHash", 100)
@@ -41,23 +34,16 @@ object Medias : Table(){
     }
 }
 
-//sessions: sessionId, query+,
 object Sessions : Table(){
     val id = integer("id").autoIncrement().primaryKey()
 }
 
-object ASD : IntIdTable(){
-
-}
-
-//queries: videoId, cutId+
 object Queries : Table(){
     val id = integer("id").autoIncrement().primaryKey()
     val mediaId = integer("mediaId") references Medias.id
     val sessionId = integer("sessionId") references Sessions.id
 }
 
-//tracks: trackId, trackInfo
 object Tracks : Table(){
     val id = integer("id").autoIncrement().primaryKey()
     val queryId = integer("queryId") references Queries.id
@@ -67,5 +53,4 @@ object Tracks : Table(){
     val start = varchar("start", 30)
     val duration = varchar("duration", 30)
     val present = bool("present")
-
 }

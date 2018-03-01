@@ -11,19 +11,30 @@ object UrlUtils {
         val bufferLength = 4096
 
         val array = ByteArray(bufferLength)
-        conn.getInputStream().buffered(bufferLength).use { input ->
-            File(path).outputStream().use { output ->
-                var n = 0
-                while (true) {
-                    val len = input.read(array)
-                    if (len < 0) {
-                        break
+        try {
+            conn.getInputStream().buffered(bufferLength).use { input ->
+                File(path).outputStream().use { output ->
+                    var n = 0
+                    while (true) {
+                        val len = input.read(array)
+                        if (len < 0) {
+                            break
+                        }
+                        output.write(array, 0, len)
+                        n += len
+                        onProgress(n, size)
                     }
-                    output.write(array, 0, len)
-                    n += len
-                    onProgress(n, size)
                 }
             }
+        } catch (e : Exception){
+            if (File(path).exists()){
+                try {
+                    File(path).delete()
+                } catch (e : Exception){
+                    e.printStackTrace()
+                }
+            }
+            return false
         }
         return true
     }

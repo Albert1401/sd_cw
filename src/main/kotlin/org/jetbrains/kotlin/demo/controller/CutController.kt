@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.demo.util.ffmpeg
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.web.bind.annotation.*
 import java.nio.file.Files
@@ -20,6 +21,7 @@ import kotlin.concurrent.thread
 
 @RestController
 class CutController {
+
     @Throws(Exception::class)
     protected fun configure(http: HttpSecurity) {
         http
@@ -30,9 +32,6 @@ class CutController {
                 .and()
                 .httpBasic().disable();
     }
-
-    //queryId -> Thread (for cancelling)
-//    val jobs = ConcurrentHashMap<Int, Thread>()
 
     @GetMapping(value = ["/media"])
     fun media(@RequestParam(value = "youtubeHashId", required = true) videoId: String): List<MediaInfo> {
@@ -69,39 +68,45 @@ class CutController {
         val media = query.media
         //TODO save it to cancel
         val job = thread {
-            //TODO cancel handler
             val mediaPath = "${media.youtubeHash}-${media.quality}.${media.format}"
-            //TODO error handlers
-            if (MediaManager.isMediaComplete(mediaId) || UrlUtils.retrieveFromTo(media.url,
-                    mediaPath,
-                    { i, n ->
-                        MediaManager.setMediaProgress(mediaId, i.toFloat() / n)
-                    })) {
-                MediaManager.setMediaComplete(mediaId)
-                for (track in query.tracks) {
-                    val trackId = MediaManager.createTrack(track, queryId)
-                    ffmpeg.extractTrack(mediaPath, trackId.toString(), track)
-                    MediaManager.setTrackComplete(trackId)
+            try {
+                if (MediaManager.isMediaComplete(mediaId) || UrlUtils.retrieveFromTo(media.url,
+                        mediaPath,
+                        { i, n ->
+                            MediaManager.setMediaProgress(mediaId, i.toFloat() / n)
+                        })) {
+                    MediaManager.setMediaComplete(mediaId)
+                    for (track in query.tracks) {
+                        val trackId = MediaManager.createTrack(track, queryId)
+                        ffmpeg.extractTrack(mediaPath, trackId.toString(), track)
+                        MediaManager.setTrackComplete(trackId)
+                    }
                 }
+            } catch (e : Exception){
+                clean(mediaId)
             }
         }
     }
 
+    @Scheduled(fixedDelay = 25000)
+    fun cleanOld(){
+        clean(-1)
+    }
 
-//    fun check(media: MediaInfo): Boolean {
-//        return true
-//    }
-//
-//    fun check(sessionId: Int): Boolean {
-//        return true
-//    }
+    @GetMapping(value = ["/clean"])
+    fun clean(@RequestParam("id") mediaId: Int = -1) {
+        val mediaIds = if (mediaId == -1) MediaManager.selectOldMediaId() else listOf(mediaId)
+        for (id in mediaIds){
+            MediaManager.deleteAllByMedia(id)
+        }
+    }
+
 
     @GetMapping(value = ["/track"], produces = ["audio/mp3"])
-    fun getTrack(@RequestParam(value = "id", required = true) trackId: Int): ResponseEntity<ByteArrayResource>? {
-        //TODO
+    fun getTrack(@RequestParam(value = "id", required = true) trackId: Int): ResponseEntity<ByteArrayResource> {
         val mp3 = Files.walk(Paths.get("$trackId/"), 1)
                 .filter { it.toString().endsWith("mp3") }
-                .findFirst().orElseGet { null }!!
+                .findFirst().orElseGet { null } ?: return ResponseEntity(HttpStatus.NOT_FOUND)
         return ResponseEntity.ok()
                 .body(ByteArrayResource(IOUtils.toByteArray(Files.newInputStream(mp3))))
     }

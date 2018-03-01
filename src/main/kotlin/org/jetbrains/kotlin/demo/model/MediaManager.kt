@@ -1,8 +1,11 @@
 package org.jetbrains.kotlin.demo.model
 
+import org.apache.commons.io.FileUtils
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.joda.time.DateTime
+import java.nio.file.Files
+import java.nio.file.Paths
 
 
 object MediaManager {
@@ -56,7 +59,11 @@ object MediaManager {
     }
 
     fun getAllTracksByQueryId(queryId: Int): List<Int> = transaction {
-        Tracks.select { Tracks.queryId.eq(queryId) and (Tracks.present.eq(true)) }
+        getTracks(queryId)
+    }
+
+    private fun getTracks(queryId: Int): List<Int> {
+        return Tracks.select { Tracks.queryId.eq(queryId) and (Tracks.present.eq(true)) }
                 .map { it[Tracks.id] }.toList()
     }
 
@@ -85,4 +92,52 @@ object MediaManager {
     fun isMediaComplete(mediaId: Int): Boolean = transaction {
         Medias.select { (Medias.id eq mediaId).and(Medias.progress eq 100) }.count() != 0
     }
+
+    fun selectOldMediaId(): List<Int> {
+        return transaction {
+            Medias.select { Medias.birthday less DateTime.now().minusMinutes(30) }.map { it[Medias.id] }.toList()
+        }
+    }
+
+    fun deleteAllByMedia(mediaId: Int) = transaction {
+        val queries = Queries.select { Queries.mediaId eq mediaId }.map { it[Queries.id] }
+        queries.forEach { qId ->
+            val tracks = getTracks(qId)
+            tracks.forEach { trId ->
+                val trackPath = Paths.get("$trId")
+                if (Files.exists(trackPath)) {
+                    try {
+                        FileUtils.deleteDirectory(trackPath.toFile())
+                    } catch (e : Exception){
+                        e.printStackTrace()
+                    }
+                }
+                Tracks.deleteWhere {
+                    Tracks.queryId eq qId
+                }
+                Queries.deleteWhere {
+                    Queries.id eq qId
+                }
+            }
+        }
+        Medias.select {
+            Medias.id eq mediaId
+        }.forEach {
+            val mediaPath = getMediaPath(it[Medias.youtubeHash], it[Medias.quality], it[Medias.format])
+            try {
+                Files.deleteIfExists(Paths.get(mediaPath))
+            } catch (e: Exception){
+                e.printStackTrace()
+            }
+        }
+        Medias.deleteWhere {
+            Medias.id eq mediaId
+        }
+    }
+
+    fun getMediaPath(youtubeHashId: String, quality: String, format: String): String {
+        return "$youtubeHashId-$quality.$format"
+    }
+
+
 }
